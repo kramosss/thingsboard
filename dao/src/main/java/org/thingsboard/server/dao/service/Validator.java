@@ -166,7 +166,7 @@ public final class Validator {
      * @param errorMessageFunction  the error message function for exception that applies ids
      */
     static void validateId(UUIDBased id, List<? extends UUIDBased> ids, Function<List<? extends UUIDBased>, String> errorMessageFunction) {
-        if (id == null) {
+        if (id == null || id.getId() == null) {
             throw new IncorrectParameterException(errorMessageFunction.apply(ids));
         }
     }
