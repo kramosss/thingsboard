@@ -31,6 +31,7 @@
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <main.dir>${basedir}</main.dir>
+        <argLine></argLine>
         <pkg.disabled>true</pkg.disabled>
         <pkg.process-resources.phase>none</pkg.process-resources.phase>
         <pkg.package.phase>none</pkg.package.phase>
@@ -662,12 +663,33 @@
                     <version>${surefire.version}</version>
                     <configuration>
                         <argLine>
+                            @{argLine}
                             -XX:+UseStringDeduplication -XX:MaxGCPauseMillis=200
                             --add-opens=java.base/java.lang.reflect=ALL-UNNAMED
                             -Dqueue.edqs.local.rocksdb_path="target/rocksdb/fork_${surefire.forkNumber}/edqs"
                             -Dqueue.calculated_fields.rocks_db_path="target/rocksdb/fork_${surefire.forkNumber}/cf"
                         </argLine>
                     </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.jacoco</groupId>
+                    <artifactId>jacoco-maven-plugin</artifactId>
+                    <version>0.8.12</version>
+                    <executions>
+                        <execution>
+                            <id>prepare-agent</id>
+                            <goals>
+                                <goal>prepare-agent</goal>
+                            </goals>
+                        </execution>
+                        <execution>
+                            <id>report</id>
+                            <phase>test</phase>
+                            <goals>
+                                <goal>report</goal>
+                            </goals>
+                        </execution>
+                    </executions>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
@@ -885,6 +907,10 @@
             <plugin>
                 <groupId>com.mycila</groupId>
                 <artifactId>license-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
             </plugin>
         </plugins>
     </build>
