@@ -36,11 +36,14 @@ concurrency:
 
 jobs:
   # ─────────────────────────────────────────────────────────────
-  # Job 1 – Compile the full project (no tests, verifies the
-  #         codebase compiles end-to-end including proto sources)
+  # Job 1 – Compile common/util and all its upstream dependencies.
+  #         Avoids ui-ngx (frontend-maven-plugin downloads Node/Yarn)
+  #         and msa/black-box-tests (only in reactor when
+  #         -DblackBoxTests.skip=false, so excluding it with ! errors).
+  #         --also-make resolves only what common/util needs.
   # ─────────────────────────────────────────────────────────────
   compile:
-    name: Full Compile (skip tests)
+    name: Compile common/util
     runs-on: ubuntu-latest
 
     steps:
@@ -59,15 +62,13 @@ jobs:
           java -version
           mvn -version
 
-      # Compile everything except the Angular UI (built in a separate job)
-      # and the black-box tests (require a live ThingsBoard instance + Docker).
-      # -DskipTests skips execution but still compiles test sources.
-      - name: Compile all modules
+      - name: Compile common/util and dependencies
         env:
           MAVEN_OPTS: '-Xmx2g -XX:+UseG1GC'
         run: |
-          mvn -T 1C clean install \
-            -pl '!ui-ngx,!msa/black-box-tests' \
+          mvn -T 1C install \
+            -pl common/util \
+            --also-make \
             -DskipTests \
             -Dpkg.disabled=true \
             -fae \
@@ -99,13 +100,12 @@ jobs:
           java -version
           mvn -version
 
-      # Run tests only in common/util.
-      # --also-make builds its upstream dependencies first.
+      # --also-make compiles upstream deps then runs tests in common/util only.
       - name: Run common/util tests
         env:
           MAVEN_OPTS: '-Xmx1g'
         run: |
-          mvn -T 1C test \
+          mvn test \
             -pl common/util \
             --also-make \
             -Dpkg.disabled=true \
