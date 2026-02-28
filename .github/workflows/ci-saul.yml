@@ -1,0 +1,97 @@
+name: CI - Saul
+
+on:
+  push:
+    branches:
+      - master
+      - 'ci/**'
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build:
+    name: Compile Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25 (Corretto)
+        uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: '25'
+          cache: maven
+
+      - name: Compile common/util and dependencies
+        run: |
+          mvn install -DskipTests \
+            -pl common/util --also-make \
+            -Dlicense.skip=true \
+            -Djacoco.skip=true \
+            --batch-mode
+
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25 (Corretto)
+        uses: actions/setup-java@v4
+        with:
+          distribution: corretto
+          java-version: '25'
+          cache: maven
+
+      - name: Build dependencies
+        run: |
+          mvn install -DskipTests \
+            -pl common/util --also-make \
+            -Dlicense.skip=true \
+            -Djacoco.skip=true \
+            --batch-mode
+
+      - name: Run tests on common/util
+        run: |
+          mvn test \
+            -pl common/util \
+            -Dlicense.skip=true \
+            -Djacoco.skip=true \
+            --batch-mode
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: common/util/target/surefire-reports/*.xml
+
+  ui-build:
+    name: Build Angular UI
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Yarn
+        run: npm install -g yarn
+
+      - name: Install UI dependencies
+        working-directory: ui-ngx
+        run: yarn install --frozen-lockfile
+
+      - name: Build production bundle
+        working-directory: ui-ngx
+        run: yarn build:prod
