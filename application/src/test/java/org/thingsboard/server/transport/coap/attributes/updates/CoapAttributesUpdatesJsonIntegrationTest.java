@@ -16,14 +16,26 @@
 package org.thingsboard.server.transport.coap.attributes.updates;
 
 import lombok.extern.slf4j.Slf4j;
+import org.eclipse.californium.core.CoapObserveRelation;
+import org.eclipse.californium.core.CoapResponse;
+import org.eclipse.californium.core.coap.CoAP.ResponseCode;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.thingsboard.server.common.data.CoapDeviceType;
 import org.thingsboard.server.common.data.TransportPayloadType;
+import org.thingsboard.server.common.msg.session.FeatureType;
 import org.thingsboard.server.dao.service.DaoSqlTest;
+import org.thingsboard.server.transport.coap.CoapTestCallback;
+import org.thingsboard.server.transport.coap.CoapTestClient;
 import org.thingsboard.server.transport.coap.CoapTestConfigProperties;
 import org.thingsboard.server.transport.coap.attributes.AbstractCoapAttributesIntegrationTest;
+
+import java.util.concurrent.TimeUnit;
+
+import static org.awaitility.Awaitility.await;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 @Slf4j
 @DaoSqlTest
@@ -52,5 +64,50 @@ public class CoapAttributesUpdatesJsonIntegrationTest extends AbstractCoapAttrib
     @Test
     public void testSubscribeToAttributesUpdatesFromTheServerWithEmptyCurrentStateNotification() throws Exception {
         processJsonTestSubscribeToAttributesUpdates(true);
+    }
+
+    private static class CountingCoapTestCallback extends CoapTestCallback {
+        private int loadCount = 0;
+
+        @Override
+        public void onLoad(CoapResponse response) {
+            super.onLoad(response);
+            loadCount++;
+        }
+
+        public int getLoadCount() {
+            return loadCount;
+        }
+    }
+
+    @Test
+    public void testSubscribeToAttributesUpdatesCountsNotificationsWithStub() throws Exception {
+        client = new CoapTestClient(accessToken, FeatureType.ATTRIBUTES);
+        CountingCoapTestCallback callbackCoap = new CountingCoapTestCallback();
+
+        CoapObserveRelation observeRelation = client.getObserveRelation(callbackCoap);
+
+        await("initial notification")
+                .atMost(DEFAULT_WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .until(() -> ResponseCode.CONTENT.equals(callbackCoap.getResponseCode())
+                        && callbackCoap.getObserve() != null
+                        && callbackCoap.getObserve() == 0);
+
+        assertEquals(1, callbackCoap.getLoadCount());
+
+        int expectedObserve = callbackCoap.getObserve() + 1;
+        doPostAsync("/api/plugins/telemetry/DEVICE/" + savedDevice.getId().getId()
+                + "/attributes/SHARED_SCOPE", SHARED_ATTRIBUTES_PAYLOAD, String.class, status().isOk());
+
+        await("attribute update notification")
+                .atMost(DEFAULT_WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .until(() -> ResponseCode.CONTENT.equals(callbackCoap.getResponseCode())
+                        && callbackCoap.getObserve() != null
+                        && callbackCoap.getObserve() == expectedObserve);
+
+        assertEquals(2, callbackCoap.getLoadCount());
+
+        observeRelation.proactiveCancel();
+        assertTrue(observeRelation.isCanceled());
     }
 }

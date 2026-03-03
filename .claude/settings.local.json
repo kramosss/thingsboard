@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(for:*)",
+      "Bash(do)",
+      "Bash(if [ -f \"$f\" ])",
+      "Bash(then)",
+      "Bash(__NEW_LINE_6ccc8a0ea41483e1__ fi)",
+      "Bash(done)",
+      "Bash(mvn test:*)"
+    ]
+  }
+}
