@@ -194,6 +194,15 @@
                 <pluginManagement>
                     <plugins>
                         <plugin>
+    <groupId>com.mycila</groupId>
+    <artifactId>license-maven-plugin</artifactId>
+    <configuration>
+        <excludes>
+            <exclude>.github/**</exclude>
+        </excludes>
+    </configuration>
+</plugin>
+                        <plugin>
                             <groupId>org.apache.maven.plugins</groupId>
                             <artifactId>maven-resources-plugin</artifactId>
                             <version>3.2.0</version>
