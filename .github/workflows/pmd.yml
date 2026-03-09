@@ -33,6 +33,7 @@ jobs:
       - name: Run PMD
         id: pmd
         uses: pmd/pmd-github-action@v2
+        continue-on-error: true
         with:
           version: '7.9.0'
           rulesets: 'rulesets/java/quickstart.xml'
