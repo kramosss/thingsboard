@@ -36,7 +36,7 @@ jobs:
         with:
           version: '7.9.0'
           rulesets: 'rulesets/java/quickstart.xml'
-          sourcePath: 'src/main/java'
+          sourcePath: '.'
           analyzeModifiedFilesOnly: false
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v3
