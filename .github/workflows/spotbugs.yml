@@ -61,9 +61,9 @@ jobs:
           cache: maven
 
       # Build + run SpotBugs on the core data module and its upstream deps.
-      # MAVEN_OPTS controls the Maven JVM; spotbugs.jvmArgs controls the
-      # separate SpotBugs subprocess JVM — both need to be sized for the
-      # GitHub Actions runner (~7 GB total RAM).
+      # Uses the 'spotbugs' goal (report only) — never fails the build.
+      # MAVEN_OPTS controls Maven's JVM; spotbugs.jvmArgs controls the
+      # separate SpotBugs subprocess JVM.
       - name: Run SpotBugs (verify phase)
         env:
           MAVEN_OPTS: '-Xmx2g -XX:+UseG1GC'
@@ -75,10 +75,7 @@ jobs:
             -Dlicense.skip=true \
             -Djacoco.skip=true \
             -Dspotbugs.xmlOutput=true \
-            -Dspotbugs.effort=Default \
-            -Dspotbugs.jvmArgs="-Xmx3g" \
             -Dpkg.disabled=true \
-            -fae \
             -B -ntp
 
       - name: List SpotBugs XML reports

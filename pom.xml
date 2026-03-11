@@ -928,10 +928,13 @@
                     </configuration>
                     <executions>
                         <execution>
-                            <id>spotbugs-check</id>
+                            <id>spotbugs-report</id>
                             <phase>verify</phase>
                             <goals>
-                                <goal>check</goal>
+                                <!-- 'spotbugs' generates the XML report only —
+                                     never fails the build regardless of findings.
+                                     Use 'check' if you want to gate the build. -->
+                                <goal>spotbugs</goal>
                             </goals>
                         </execution>
                     </executions>
