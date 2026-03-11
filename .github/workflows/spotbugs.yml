@@ -82,66 +82,116 @@ jobs:
       - name: List SpotBugs XML reports
         run: find . -name 'spotbugsXml.xml' | sort
 
-      - name: Install spotbugs-sarif converter
-        run: pip install spotbugs2sarif --quiet
-
-      - name: Merge & convert SpotBugs XML to SARIF
+      - name: Convert SpotBugs XML to SARIF
         run: |
-          REPORT_FILES=$(find . -name 'spotbugsXml.xml' | tr '\n' ' ')
+          python3 - <<'PYEOF'
+          import xml.etree.ElementTree as ET
+          import json, glob, sys, os
 
-          if [ -z "$REPORT_FILES" ]; then
-            echo "No SpotBugs XML reports found — creating empty SARIF"
-            cat > spotbugs.sarif <<'EOF'
-          {
-            "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
-            "version": "2.1.0",
-            "runs": [{"tool": {"driver": {"name": "SpotBugs", "rules": []}}, "results": []}]
-          }
-          EOF
-          else
-            python - <<'PYEOF'
-          import subprocess, sys, json, os, glob
+          PRIORITY_TO_LEVEL = {"1": "error", "2": "warning", "3": "note"}
 
           xml_files = glob.glob('./**/spotbugsXml.xml', recursive=True)
-          print(f"Converting {len(xml_files)} SpotBugs XML files to SARIF", file=sys.stderr)
+          print(f"Found {len(xml_files)} SpotBugs XML report(s)", file=sys.stderr)
 
           merged_results = []
           merged_rules = {}
-          driver_info = None
 
           for xml_file in xml_files:
-              out_file = xml_file.replace('.xml', '.sarif')
-              subprocess.run(
-                  ['spotbugs2sarif', xml_file, '-o', out_file],
-                  check=False, capture_output=True
-              )
-              if os.path.exists(out_file):
-                  with open(out_file) as f:
-                      sarif = json.load(f)
-                  for run in sarif.get('runs', []):
-                      if driver_info is None:
-                          driver_info = run['tool']['driver']
-                      for rule in run['tool']['driver'].get('rules', []):
-                          merged_rules[rule['id']] = rule
-                      merged_results.extend(run.get('results', []))
+              try:
+                  tree = ET.parse(xml_file)
+                  root = tree.getroot()
+              except ET.ParseError as e:
+                  print(f"Skipping {xml_file}: {e}", file=sys.stderr)
+                  continue
 
-          if driver_info is None:
-              driver_info = {"name": "SpotBugs", "version": "4.9.3", "rules": []}
+              # Collect rule metadata from BugPattern elements
+              for bp in root.findall('BugPattern'):
+                  bug_type = bp.get('type', '')
+                  if bug_type and bug_type not in merged_rules:
+                      merged_rules[bug_type] = {
+                          'id': bug_type,
+                          'name': bug_type,
+                          'shortDescription': {'text': (bp.findtext('ShortDescription') or bug_type)},
+                          'fullDescription': {'text': (bp.findtext('Details') or bp.findtext('ShortDescription') or bug_type)},
+                          'helpUri': f'https://spotbugs.readthedocs.io/en/stable/bugDescriptions.html#{bug_type.lower().replace("_", "-")}',
+                          'properties': {'tags': [bp.get('category', 'OTHER')]},
+                      }
 
-          driver_info['rules'] = list(merged_rules.values())
+              # Convert each BugInstance to a SARIF result
+              for bug in root.findall('BugInstance'):
+                  bug_type = bug.get('type', 'UNKNOWN')
+                  priority = bug.get('priority', '2')
+                  level = PRIORITY_TO_LEVEL.get(priority, 'warning')
+                  msg = bug.findtext('LongMessage') or bug.findtext('ShortMessage') or bug_type
 
-          output = {
-              "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
-              "version": "2.1.0",
-              "runs": [{"tool": {"driver": driver_info}, "results": merged_results}]
+                  # Prefer the primary SourceLine
+                  src_line = None
+                  for sl in bug.iter('SourceLine'):
+                      if sl.get('primary') == 'true':
+                          src_line = sl
+                          break
+                  if src_line is None:
+                      src_line = bug.find('SourceLine')
+
+                  locations = []
+                  if src_line is not None:
+                      source_path = src_line.get('sourcepath', '')
+                      start = src_line.get('start')
+                      # Map sourcepath (pkg/Sub/File.java) to src root-relative URI
+                      uri = source_path.replace('\\', '/')
+                      loc = {
+                          'physicalLocation': {
+                              'artifactLocation': {
+                                  'uri': uri,
+                                  'uriBaseId': '%SRCROOT%'
+                              }
+                          }
+                      }
+                      if start:
+                          loc['physicalLocation']['region'] = {'startLine': int(start)}
+                          end = src_line.get('end')
+                          if end and end != start:
+                              loc['physicalLocation']['region']['endLine'] = int(end)
+                      locations.append(loc)
+
+                  # Ensure rule entry exists
+                  if bug_type not in merged_rules:
+                      short = bug.findtext('ShortMessage') or bug_type
+                      merged_rules[bug_type] = {
+                          'id': bug_type,
+                          'name': bug_type,
+                          'shortDescription': {'text': short},
+                          'fullDescription': {'text': short},
+                      }
+
+                  merged_results.append({
+                      'ruleId': bug_type,
+                      'level': level,
+                      'message': {'text': msg},
+                      'locations': locations,
+                  })
+
+          sarif = {
+              '$schema': 'https://json.schemastore.org/sarif-2.1.0.json',
+              'version': '2.1.0',
+              'runs': [{
+                  'tool': {
+                      'driver': {
+                          'name': 'SpotBugs',
+                          'version': '4.9.3',
+                          'informationUri': 'https://spotbugs.github.io/',
+                          'rules': list(merged_rules.values()),
+                      }
+                  },
+                  'results': merged_results,
+              }]
           }
 
           with open('spotbugs.sarif', 'w') as f:
-              json.dump(output, f, indent=2)
+              json.dump(sarif, f, indent=2)
 
-          print(f"Merged {len(merged_results)} findings into spotbugs.sarif", file=sys.stderr)
+          print(f"Wrote {len(merged_results)} finding(s) to spotbugs.sarif", file=sys.stderr)
           PYEOF
-          fi
 
       - name: Upload SpotBugs SARIF to GitHub Code Scanning
         uses: github/codeql-action/upload-sarif@v3
